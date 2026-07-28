@@ -3,6 +3,7 @@ package org.xpra.client.ui.session
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import kotlin.math.roundToInt
 
 /**
  * The single mapping between the server's root coordinates and the view.
@@ -34,10 +35,19 @@ data class ViewTransform(
         bottom = toViewY(y) + h * scale,
     )
 
-    /** View coordinates back to the absolute root coordinates the server expects. */
+    /**
+     * View coordinates back to the absolute root coordinates the server expects.
+     *
+     * Rounds rather than truncates. Truncation looks like the obvious choice — "which pixel is
+     * the finger over" is a floor — but `scale` is a float, so a coordinate that should land
+     * exactly on a pixel boundary computes as a hair below it and floors to the *previous*
+     * pixel. That is a systematic off-by-one across the whole window, not an edge case.
+     * Rounding makes this a true inverse of [toViewX]/[toViewY]; the resulting half-pixel shift
+     * in which root pixel a touch resolves to is immaterial for a fingertip.
+     */
     fun toRoot(point: Offset): Pair<Int, Int> {
-        val x = ((point.x - offsetX) / scale).toInt() + rootX
-        val y = ((point.y - offsetY) / scale).toInt() + rootY
+        val x = ((point.x - offsetX) / scale).roundToInt() + rootX
+        val y = ((point.y - offsetY) / scale).roundToInt() + rootY
         return x to y
     }
 

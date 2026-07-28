@@ -87,39 +87,42 @@ object DrawPainter {
             throw PaintException("server used zstd for pixels, which we never advertised")
         }
 
-        val format = (options["rgb_format"] as? String) ?: if (coding == "rgb24") "RGB" else "RGBA"
-        val srcBytesPerPixel = if (format.length >= 4) 4 else 3
+        // We advertise rgb_formats: [RGBA, RGBX, RGB], and the server honours that by
+        // reformatting on its side, so RGBA is the expected case and costs a straight copy.
+        // The BGR variants are handled anyway rather than assumed away: silently swapped red
+        // and blue is a confusing failure, and the swizzle is a few lines. Anything else --
+        // BGR565, r210 -- is refused outright rather than guessed at.
+        val format = (options["rgb_format"] as? String)?.ifEmpty { null }
+            ?: if (coding == "rgb24") "RGB" else "RGBA"
+        val (srcBytesPerPixel, swapRedBlue, hasAlpha) = when (format) {
+            "RGBA" -> Triple(4, false, true)
+            "RGBX" -> Triple(4, false, false)
+            "BGRA" -> Triple(4, true, true)
+            "BGRX" -> Triple(4, true, false)
+            "RGB" -> Triple(3, false, false)
+            "BGR" -> Triple(3, true, false)
+            else -> throw PaintException("unsupported rgb format '$format'")
+        }
         val srcStride = if (rowstride > 0) rowstride else w * srcBytesPerPixel
 
         val out = ByteArray(w * h * 4)
-        when (srcBytesPerPixel) {
-            4 -> for (row in 0 until h) {
-                val from = row * srcStride
-                if (from + w * 4 > data.size) throw PaintException("rgb payload is short at row $row")
-                System.arraycopy(data, from, out, row * w * 4, w * 4)
+        for (row in 0 until h) {
+            var from = row * srcStride
+            var to = row * w * 4
+            if (from + w * srcBytesPerPixel > data.size) {
+                throw PaintException("rgb payload is short at row $row")
             }
-            // 24-bit needs the alpha byte inserted.
-            else -> for (row in 0 until h) {
-                var from = row * srcStride
-                var to = row * w * 4
-                if (from + w * 3 > data.size) throw PaintException("rgb payload is short at row $row")
-                repeat(w) {
-                    out[to] = data[from]
-                    out[to + 1] = data[from + 1]
-                    out[to + 2] = data[from + 2]
-                    out[to + 3] = 0xFF.toByte()
-                    from += 3
-                    to += 4
-                }
-            }
-        }
-        // "X" in the format name means the fourth byte is padding, not alpha, so force it
-        // opaque rather than painting a fully transparent tile.
-        if (format.endsWith("X")) {
-            var i = 3
-            while (i < out.size) {
-                out[i] = 0xFF.toByte()
-                i += 4
+            repeat(w) {
+                val r = data[from + if (swapRedBlue) 2 else 0]
+                val b = data[from + if (swapRedBlue) 0 else 2]
+                out[to] = r
+                out[to + 1] = data[from + 1]
+                out[to + 2] = b
+                // An "X" byte is padding rather than alpha, so force it opaque instead of
+                // painting a fully transparent tile.
+                out[to + 3] = if (hasAlpha) data[from + 3] else 0xFF.toByte()
+                from += srcBytesPerPixel
+                to += 4
             }
         }
 

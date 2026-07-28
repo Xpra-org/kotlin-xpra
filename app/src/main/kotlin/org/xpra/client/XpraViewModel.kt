@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.view.ViewConfiguration
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -68,6 +69,11 @@ class XpraViewModel(app: Application) : AndroidViewModel(app) {
             password = uri.password.ifEmpty { null },
             display = virtualDisplay(scalingFactor.value),
         )
+        // These have to be set before start(), because they go out in the hello and ask the
+        // server to widen X's own double-click time and distance to touch-friendly values.
+        val viewConfig = ViewConfiguration.get(getApplication())
+        client.doubleClickTimeMs = ViewConfiguration.getDoubleTapTimeout()
+        client.doubleClickDistancePx = viewConfig.scaledTouchSlop
         _client.value = client
         client.start()
     }

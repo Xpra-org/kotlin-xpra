@@ -86,14 +86,6 @@ fun SessionScreen(
     }
     val snap = remember(config) { DoubleTapSnap(config) }
 
-    // Keep the server's idea of double-click matched to this device's, so the remote toolkit
-    // is lenient in the same way our snapping is.
-    remember(config) {
-        client.doubleClickTimeMs = config.doubleTapTimeoutMs.toInt()
-        client.doubleClickDistancePx = config.touchSlopPx.toInt()
-        true
-    }
-
     val target = remember(client) {
         object : TouchTarget {
             override fun motion(rootX: Int, rootY: Int) = client.sendPointer(rootX, rootY)

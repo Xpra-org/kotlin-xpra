@@ -1,6 +1,7 @@
 package org.xpra.client.data
 
 import android.content.Context
+import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
@@ -11,9 +12,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-private val Context.dataStore: DataStoreDelegate by preferencesDataStore(name = "xpra")
-
-private typealias DataStoreDelegate = androidx.datastore.core.DataStore<Preferences>
+private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "xpra")
 
 /** A connection the user chose to keep. */
 @Serializable

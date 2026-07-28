@@ -29,8 +29,9 @@ not asked for, which is what keeps the client this small.
 
 ## Building
 
-Requires a JDK (not just a JRE — Fedora's `java-25-openjdk` package ships without `javac`;
-install `java-25-openjdk-devel`, or point `JAVA_HOME` at any JDK 17+):
+Requires a JDK — not just a JRE. Fedora's `java-25-openjdk` package ships without `javac`, so
+either `sudo dnf install java-25-openjdk-devel` or point `JAVA_HOME` at any JDK 17+ (the one
+bundled with IntelliJ works: `~/.local/share/JetBrains/Toolbox/apps/IDEA-U/ch-0/*/jbr`).
 
 ```bash
 export JAVA_HOME=/usr/lib/jvm/java-25-openjdk
@@ -38,7 +39,26 @@ export JAVA_HOME=/usr/lib/jvm/java-25-openjdk
 ./gradlew installDebug          # to a connected device or running emulator
 ```
 
-The Android SDK path goes in `local.properties` (`sdk.dir=...`); `compileSdk` is 37.
+The Android SDK path goes in `local.properties` (`sdk.dir=...`); `compileSdk` is 37, and AGP 9
+provides Kotlin itself so there is no `org.jetbrains.kotlin.android` plugin (applying it is an
+error).
+
+### Running the emulator here
+
+The emulator needs VT-x, and it cannot get it while a VirtualBox VM is running — it fails with
+`KVM: entry failed, hardware error 0x0`. Shut the VM down (or `sudo modprobe -r vboxdrv`) and
+it works. `-accel off` falls back to software emulation, but booting Android 16 that way takes
+far longer than it is worth.
+
+```bash
+~/Android/Sdk/emulator/emulator -avd xpra-test &
+./gradlew installDebug
+adb shell am start -n org.xpra.client/.MainActivity
+adb logcat -s xpra
+```
+
+mDNS does not cross the emulator's NAT, so on the emulator connect by typing the address; use a
+physical device to exercise discovery, touch and the IME.
 
 ## Testing
 

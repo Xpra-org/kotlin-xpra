@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -86,6 +87,14 @@ fun SessionScreen(
     }
     val snap = remember(config) { DoubleTapSnap(config) }
 
+    // The gesture handler is started once per `pointerInput` key change, so anything it
+    // captures directly would be frozen at that composition. These two are recomputed every
+    // frame -- the transform changes on every zoom, pan and window switch -- so they are read
+    // through rememberUpdatedState instead, or a tap after a pinch would resolve against the
+    // transform from before the pinch.
+    val currentTransform by rememberUpdatedState(transform)
+    val currentWindow by rememberUpdatedState(current)
+
     val target = remember(client) {
         object : TouchTarget {
             override fun motion(rootX: Int, rootY: Int) = client.sendPointer(rootX, rootY)
@@ -100,13 +109,14 @@ fun SessionScreen(
                 val next = (zoom * factor).coerceIn(1f, config.maxZoom)
                 zoom = next
                 pan = ViewTransform.clampPan(
-                    pan, current?.width ?: 1, current?.height ?: 1, viewWidth, viewHeight, next,
+                    pan, currentWindow?.width ?: 1, currentWindow?.height ?: 1,
+                    viewWidth, viewHeight, next,
                 )
             }
 
             override fun panBy(delta: Offset) {
                 pan = ViewTransform.clampPan(
-                    pan + delta, current?.width ?: 1, current?.height ?: 1,
+                    pan + delta, currentWindow?.width ?: 1, currentWindow?.height ?: 1,
                     viewWidth, viewHeight, zoom,
                 )
             }
@@ -128,7 +138,7 @@ fun SessionScreen(
                     viewHeight = it.height.toFloat()
                 }
                 .pointerInput(client, config) {
-                    xpraGestures(config, snap, target) { transform }
+                    xpraGestures(config, snap, target, { currentTransform }, { zoom > 1f })
                 },
         )
 

@@ -86,6 +86,7 @@ suspend fun PointerInputScope.xpraGestures(
     snap: DoubleTapSnap,
     target: TouchTarget,
     transform: () -> ViewTransform,
+    zoomedIn: () -> Boolean,
 ) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
@@ -157,7 +158,7 @@ suspend fun PointerInputScope.xpraGestures(
                 }
             }
 
-            Phase.MULTI -> multiTouch(config, target, transform)
+            Phase.MULTI -> multiTouch(config, target, transform, zoomedIn)
         }
     }
 }
@@ -172,6 +173,7 @@ private suspend fun androidx.compose.ui.input.pointer.AwaitPointerEventScope.mul
     config: TouchConfig,
     target: TouchTarget,
     transform: () -> ViewTransform,
+    zoomedIn: () -> Boolean,
 ) {
     var zooming: Boolean? = null
     var lastCentroid: Offset? = null
@@ -206,15 +208,18 @@ private suspend fun androidx.compose.ui.input.pointer.AwaitPointerEventScope.mul
 
         when (zooming) {
             true -> if (lastDistance > 0f) target.zoomBy(distance / lastDistance, centroid)
-            false -> {
-                // Zoom is a purely client-side view transform, so panning while zoomed in
-                // moves the view; the scroll wheel is what reaches the server.
+            // A two-finger drag means one of two things depending on the zoom, and doing both
+            // at once would be incoherent. Zoomed in, the obvious intent is to move around the
+            // magnified view, which is purely client-side. At 1:1 there is nowhere to pan to,
+            // so it is a scroll and reaches the server as wheel events.
+            false -> if (zoomedIn()) {
                 target.panBy(centroidDelta)
+            } else {
                 scrollAccumulator += centroidDelta.y / transform().scale
                 val perClick = config.scrollPixelsPerClick
                 while (abs(scrollAccumulator) >= perClick) {
                     val (rx, ry) = transform().toRoot(centroid)
-                    // Direct manipulation: dragging content upwards scrolls down.
+                    // Direct manipulation: dragging the content upwards scrolls down.
                     val button = if (scrollAccumulator < 0) 5 else 4
                     target.wheel(button, 1f, rx, ry)
                     scrollAccumulator -= perClick * if (scrollAccumulator < 0) -1 else 1

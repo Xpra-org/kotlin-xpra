@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -42,6 +43,11 @@ fun HiddenKeyboardInput(
     modifier: Modifier = Modifier,
     onEditorReady: (EditText) -> Unit,
 ) {
+    // The factory below runs once, so the listeners it installs would keep the `modifiers`
+    // lambda from the first composition -- and with it the latched set as it was then, which
+    // is empty. Read it through rememberUpdatedState so a latched Ctrl is actually seen.
+    val currentModifiers by rememberUpdatedState(modifiers)
+    val liveModifiers = { currentModifiers() }
     AndroidView(
         modifier = modifier,
         factory = { context ->
@@ -76,7 +82,7 @@ fun HiddenKeyboardInput(
                     }
                     if (name.isEmpty()) return@setOnKeyListener false
                     if (event.action == KeyEvent.ACTION_DOWN) {
-                        client.typeNamedKey(name, modifiers())
+                        client.typeNamedKey(name, liveModifiers())
                     }
                     true
                 }
@@ -85,7 +91,7 @@ fun HiddenKeyboardInput(
                 // user types is seen as an insertion rather than as the sentinel going missing.
                 setText(KeyForwarder.SENTINEL)
                 setSelection(KeyForwarder.SENTINEL.length)
-                addTextChangedListener(KeyForwarder(this, client, modifiers))
+                addTextChangedListener(KeyForwarder(this, client, liveModifiers))
                 onEditorReady(this)
             }
         },

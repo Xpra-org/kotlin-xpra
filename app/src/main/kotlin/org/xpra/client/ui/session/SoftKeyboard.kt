@@ -8,13 +8,17 @@ import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -178,9 +182,26 @@ fun ModifierRow(
     modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp),
+        // A light translucent tint sets the row apart from the window without hiding it; the
+        // chips themselves carry their own opaque fill for legibility.
+        modifier = modifier
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.25f))
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 8.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+        // Chips are transparent by default, so their light (dark theme) labels sit directly on
+        // the remote window and wash out over a white one. Give them an opaque fill instead.
+        val container = MaterialTheme.colorScheme.surfaceContainerHigh
+        val labelColor = MaterialTheme.colorScheme.onSurface
+        val filterColors = FilterChipDefaults.filterChipColors(
+            containerColor = container,
+            labelColor = labelColor,
+        )
+        val assistColors = AssistChipDefaults.assistChipColors(
+            containerColor = container,
+            labelColor = labelColor,
+        )
         listOf(
             "Ctrl" to Keysyms.MOD_CONTROL,
             "Alt" to Keysyms.MOD_ALT,
@@ -190,6 +211,7 @@ fun ModifierRow(
                 selected = mod in latched,
                 onClick = { onToggle(mod) },
                 label = { Text(label) },
+                colors = filterColors,
             )
         }
         listOf(
@@ -208,6 +230,7 @@ fun ModifierRow(
             AssistChip(
                 onClick = { client.typeNamedKey(keyname, latched.toList()) },
                 label = { Text(label) },
+                colors = assistColors,
             )
         }
     }

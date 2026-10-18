@@ -200,7 +200,9 @@ object Hello {
     private fun monitor(d: Display): Map<String, Any?> = mapOf(
         "geometry" to listOf(0, 0, d.width, d.height),
         "primary" to true,
-        "refresh-rate" to d.refreshRate,
+        // Per-monitor rates are in mHz, unlike the Hz of the display-wide value above
+        // (xpra/util/parsing.py:636).
+        "refresh-rate" to d.refreshRate * 1000,
         "width-mm" to mm(d.width, d.dpi),
         "height-mm" to mm(d.height, d.dpi),
         "manufacturer" to "Android",

@@ -16,13 +16,29 @@ android {
         applicationId = "org.xpra.client"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1"
+        // Release CI passes both from the tag (-PversionName=1.2 -PversionCode=<run number>).
+        versionCode = (findProperty("versionCode") as String?)?.toInt() ?: 1
+        versionName = findProperty("versionName") as String? ?: "0.1"
+    }
+
+    // The release key comes from the environment so the keystore never enters the repository:
+    // CI decodes it from a secret. Without XPRA_KEYSTORE, assembleRelease still builds, but the
+    // APK is unsigned and will not install.
+    signingConfigs {
+        System.getenv("XPRA_KEYSTORE")?.let { path ->
+            create("release") {
+                storeFile = file(path)
+                storePassword = System.getenv("XPRA_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("XPRA_KEY_ALIAS")
+                keyPassword = System.getenv("XPRA_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 

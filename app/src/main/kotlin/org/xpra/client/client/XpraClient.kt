@@ -67,8 +67,7 @@ class XpraClient(
     private val uuid = Challenge.randomHex(16)
     private val sessionId = Challenge.randomHex(16)
     private var pendingPassword: String? = password
-    private var supportsConfigureDisplay = false
-    private var preciseWheel = false
+    private var wheelMotion = false
     private var loop: Job? = null
     private var pingTimer: Job? = null
 
@@ -98,7 +97,7 @@ class XpraClient(
     }
 
     fun disconnect() {
-        runCatching { connection.send("disconnect", "client exit") }
+        runCatching { connection.send("connection-close", "client exit") }
         connection.close()
         pingTimer?.cancel()
         loop?.cancel()
@@ -130,12 +129,13 @@ class XpraClient(
             "window-raise" -> onWindowRaise(packet)
             "window-draw" -> onDraw(packet)
             "window-eos" -> Unit // no video decoders to reset yet
-            "ping" -> connection.send("ping_echo", packet.long(1), 0, 0, 0, -1, packet.str(3))
-            "ping_echo" -> Unit
-            "clipboard-token" -> onClipboardToken(packet)
+            "ping" -> connection.send("ping-echo", packet.long(1), 0, 0, 0, -1, packet.str(3))
+            "ping-echo" -> Unit
+            "clipboard-data" -> onClipboardData(packet)
+            "clipboard-token" -> onLegacyClipboardToken(packet)
             "clipboard-request" -> onClipboardRequest(packet)
-            "set-clipboard-enabled" -> Unit
-            "disconnect" -> _state.value = SessionState.Failed(
+            "clipboard-status" -> Unit
+            "connection-close" -> _state.value = SessionState.Failed(
                 listOf(packet.str(1), packet.str(2)).filter { it.isNotEmpty() }.joinToString(": ")
             )
             "connection-lost" -> _state.value = SessionState.Failed(packet.str(1))
@@ -147,9 +147,9 @@ class XpraClient(
     private fun onHello(packet: Packet) {
         val h = packet.dict(1)
         Log.i(TAG, "server ${h["version"]} display=${h["display"]} session=${h["session_name"]}")
-        preciseWheel = h["wheel.precise"] == true
-        val types = (h["packet-types"] as? List<*>)?.map { it.toString() }.orEmpty()
-        supportsConfigureDisplay = "configure-display" in types
+        // Same rule as xpra/client/subsystem/pointer.py:399: a server that cannot inject
+        // fractional wheel motion emulates it with button events, unless it says otherwise.
+        wheelMotion = h["wheel.precise"] == true || h["wheel.emulation"] != false
         _state.value = SessionState.Connecting("Waiting for windows…")
         // Some servers never send startup-complete; the first window is enough to proceed.
     }
@@ -216,8 +216,8 @@ class XpraClient(
     private fun onWindowCreate(packet: Packet) {
         val wid = packet.int(1)
         val metadata = packet.dict(6)
-        // A modern server folds override-redirect into window-create via metadata rather than
-        // using a distinct packet type, so both signals count.
+        // A modern server folds override-redirect into window-create via metadata, a
+        // backwards-compatible v7 server sends new-override-redirect instead, so both count.
         val or = packet.type == "new-override-redirect" || metadata["override-redirect"] == true
 
         val window = XWindow(
@@ -230,10 +230,10 @@ class XpraClient(
         byWid[wid] = window
 
         // Override-redirect windows are placed by the server and must not be mapped or focused
-        // (xpra/client/.../manager.py: map-window is only sent for regular windows).
+        // (xpra/client/.../manager.py: window-map is only sent for regular windows).
         if (!or) {
             connection.send(
-                "map-window", wid, window.x, window.y, window.width, window.height,
+                "window-map", wid, window.x, window.y, window.width, window.height,
                 emptyMap<String, Any>(), emptyMap<String, Any>(),
             )
             window.mapped = true
@@ -294,7 +294,7 @@ class XpraClient(
     private fun sendFocus(wid: Int) {
         if (focusedWid == wid) return
         focusedWid = wid
-        connection.send("focus", wid, emptyList<String>())
+        connection.send("window-focus", wid, emptyList<String>())
     }
 
     private fun onDraw(packet: Packet) {
@@ -329,9 +329,9 @@ class XpraClient(
     }
 
     private fun ack(sequence: Long, wid: Int, w: Int, h: Int, decodeTimeUs: Int, message: String) {
-        // The legacy argument order, which is what a BACKWARDS_COMPATIBLE 6.6 server registers.
-        // The modern name is "window-draw-ack" with wid and sequence swapped around.
-        connection.send("damage-sequence", sequence, wid, w, h, decodeTimeUs, message)
+        // ("window-ack", wid, width, height, sequence, decode_time, message):
+        // xpra/server/subsystem/window.py:410
+        connection.send("window-ack", wid, w, h, sequence, decodeTimeUs, message)
     }
 
     private fun publish() {
@@ -366,7 +366,7 @@ class XpraClient(
      */
     fun sendPointer(x: Int, y: Int) {
         val wid = widAt(x, y) ?: return
-        connection.send("pointer", -1, 0, wid, listOf(x, y), emptyMap<String, Any>())
+        connection.send("pointer-motion", -1, 0, wid, listOf(x, y), emptyMap<String, Any>())
     }
 
     fun sendButton(button: Int, pressed: Boolean, x: Int, y: Int, modifiers: List<String> = emptyList()) {
@@ -376,14 +376,15 @@ class XpraClient(
     }
 
     /**
-     * A scroll step. With a precise-wheel server one packet carries a fractional distance in
-     * 1/1000ths of a click (and is negated); otherwise it has to be discrete button clicks.
+     * A scroll step. When the server handles wheel motion one packet carries a fractional
+     * distance in 1/1000ths of a click (and is negated); otherwise it has to be discrete button
+     * clicks.
      */
     fun sendWheel(button: Int, clicks: Float, x: Int, y: Int) {
         val wid = widAt(x, y) ?: return
-        if (preciseWheel) {
+        if (wheelMotion) {
             connection.send(
-                "wheel-motion", wid, button, -(clicks * 1000).toInt(), listOf(x, y),
+                "pointer-wheel", wid, button, -(clicks * 1000).toInt(), listOf(x, y),
                 emptyList<String>(), emptyList<Int>(), emptyMap<String, Any>(),
             )
         } else {
@@ -400,8 +401,15 @@ class XpraClient(
         val keyval = char?.code ?: 0
         val keystr = char?.toString().orEmpty()
         // An absent modifier list has to encode as an empty list, not as a null. Group 0: we
-        // do not track keyboard layout groups.
-        connection.send("key-action", wid, keyname, pressed, modifiers, keyval, keystr, keyval, 0)
+        // do not track keyboard layout groups (xpra/server/subsystem/keyboard.py:220).
+        val attrs = mapOf(
+            "modifiers" to modifiers,
+            "keyval" to keyval,
+            "string" to keystr,
+            "keycode" to keyval,
+            "group" to 0,
+        )
+        connection.send("keyboard-event", wid, keyname, pressed, attrs)
     }
 
     /** Sends a character as a press/release pair, wrapping any latched modifiers around it. */
@@ -423,32 +431,41 @@ class XpraClient(
         held.reversed().forEach { sendKey(it, false, emptyList()) }
     }
 
-    fun closeWindow(wid: Int) = connection.send("close-window", wid)
+    fun closeWindow(wid: Int) = connection.send("window-close", wid)
 
     // ------------------------------------------------------------------ display and clipboard
 
     /** Re-reports the virtual desktop after a rotation or a scaling-factor change. */
     fun updateDisplay(newDisplay: Hello.Display) {
         display = newDisplay
-        if (supportsConfigureDisplay) {
-            connection.send(
-                "configure-display",
-                mapOf(
-                    "desktop-size" to listOf(newDisplay.width, newDisplay.height),
-                    "monitors" to Hello.displayCaps(newDisplay)["monitors"],
-                    "dpi" to mapOf("x" to newDisplay.dpi, "y" to newDisplay.dpi),
-                    "vrefresh" to newDisplay.refreshRate,
-                ),
-            )
-        } else {
-            connection.send(
-                "desktop_size", newDisplay.width, newDisplay.height,
-                Hello.screenSizes(newDisplay),
-            )
-        }
+        connection.send(
+            "display-configure",
+            mapOf(
+                "desktop-size" to listOf(newDisplay.width, newDisplay.height),
+                "monitors" to Hello.displayCaps(newDisplay)["monitors"],
+                "dpi" to mapOf("x" to newDisplay.dpi, "y" to newDisplay.dpi),
+                "vrefresh" to newDisplay.refreshRate,
+            ),
+        )
     }
 
-    private fun onClipboardToken(packet: Packet) {
+    /**
+     * `("clipboard-data", selection, options)`, where `options["data"]` maps each target to
+     * `[dtype, dformat, wire_encoding, wire_data]` (xpra/clipboard/core.py:351).
+     */
+    private fun onClipboardData(packet: Packet) {
+        val data = packet.dict(2)["data"] as? Map<*, *> ?: return
+        val item = TEXT_TARGETS.firstNotNullOfOrNull { data[it] as? List<*> } ?: return
+        val text = when (val d = item.getOrNull(3)) {
+            is ByteArray -> d.toString(Charsets.UTF_8)
+            is String -> d
+            else -> ""
+        }
+        if (text.isNotEmpty()) _remoteClipboard.value = text
+    }
+
+    /** What a backwards-compatible v7 server sends instead of [onClipboardData]. */
+    private fun onLegacyClipboardToken(packet: Packet) {
         // ("clipboard-token", selection, targets, target, dtype, dformat, wire_encoding, data, …)
         val text = packet.bytes(7)?.toString(Charsets.UTF_8).orEmpty()
         if (text.isNotEmpty()) _remoteClipboard.value = text
@@ -475,14 +492,24 @@ class XpraClient(
     fun sendClipboard(text: String) {
         localClipboard = text
         connection.send(
-            "clipboard-token", "CLIPBOARD",
-            listOf("text/plain", "UTF8_STRING"), "UTF8_STRING", "UTF8_STRING", 8, "bytes",
-            text.toByteArray(Charsets.UTF_8),
-            true, true, true,
+            "clipboard-data", "CLIPBOARD",
+            mapOf(
+                "claim" to true,
+                "greedy" to true,
+                "synchronous" to true,
+                "targets" to listOf("text/plain", "UTF8_STRING"),
+                "data" to mapOf(
+                    "UTF8_STRING" to listOf("UTF8_STRING", 8, "bytes", text.toByteArray(Charsets.UTF_8)),
+                ),
+            ),
         )
     }
 
     fun consumeRemoteClipboard() {
         _remoteClipboard.value = null
+    }
+
+    private companion object {
+        val TEXT_TARGETS = listOf("UTF8_STRING", "text/plain", "STRING")
     }
 }

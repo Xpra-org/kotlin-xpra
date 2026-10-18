@@ -78,10 +78,11 @@ class Packet(private val items: List<Any?>) {
 
     companion object {
         /**
-         * A modern server and a backwards-compatible one use different names for the same
-         * packet (`xpra/net/packet_type.py` picks between them on `BACKWARDS_COMPATIBLE`, which
-         * still defaults to true in 6.6). Canonicalising on receipt means each packet needs one
-         * handler rather than two, and the client keeps working when that default flips.
+         * Receive-side only. We always send the modern names from `xpra/net/packet_type.py`,
+         * which every server we accept (`Hello.PROTOCOL_VERSION`) registers. But a v7 server
+         * running with its default `BACKWARDS_COMPATIBLE=1` still *sends* the legacy names, to
+         * every client: it picks them process-wide in its own `packet_type.py`. Canonicalising on
+         * receipt keeps one handler per packet.
          */
         val CANONICAL_NAMES = mapOf(
             "new-window" to "window-create",
@@ -92,12 +93,17 @@ class Packet(private val items: List<Any?>) {
             "restack-window" to "window-restack",
             "initiate-moveresize" to "window-initiate-moveresize",
             "configure-override-redirect" to "window-move-resize",
+            "pointer-grab" to "window-grab",
+            "pointer-ungrab" to "window-ungrab",
             "bell" to "window-bell",
             "notify_show" to "notification-show",
             "notify_close" to "notification-close",
-            // Deliberately absent: "new-override-redirect". A modern server folds those into
-            // window-create with an `override-redirect` metadata flag instead of using a
-            // distinct packet type, so the handler has to check both signals anyway.
+            "disconnect" to "connection-close",
+            "ping_echo" to "ping-echo",
+            "set-clipboard-enabled" to "clipboard-status",
+            // Deliberately absent: "new-override-redirect", which is window-create without the
+            // `override-redirect` metadata flag, and "clipboard-token", whose arguments are
+            // laid out differently from "clipboard-data". Both need handlers of their own.
         )
 
         fun canonical(name: String): String = CANONICAL_NAMES[name] ?: name

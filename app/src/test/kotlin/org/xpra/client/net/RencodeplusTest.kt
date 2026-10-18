@@ -80,7 +80,8 @@ class RencodeplusTest {
     @Test
     fun `round trip of a realistic hello`() {
         val hello = mapOf(
-            "version" to "6.6",
+            "version" to "8.0",
+            "protocol-version" to listOf(7, 0),
             "client_type" to "kotlin",
             "encoders" to listOf("rencodeplus"),
             "rencodeplus" to true,
@@ -107,7 +108,8 @@ class RencodeplusTest {
 
         @Suppress("UNCHECKED_CAST")
         val caps = decoded[1] as Map<String, Any?>
-        assertEquals("6.6", caps["version"])
+        assertEquals("8.0", caps["version"])
+        assertEquals(listOf(7L, 0L), caps["protocol-version"])
         assertEquals(true, caps["rencodeplus"])
         assertEquals(false, caps["chunks"])
         assertEquals(1L, caps["compression_level"])

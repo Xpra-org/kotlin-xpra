@@ -74,7 +74,7 @@ by xpra's own compressor.
 
 `ServerSmokeTest` talks to a real server and is skipped unless you point it at one. It is the
 fastest way to iterate on the capability dictionary, since it exercises framing, rencodeplus,
-the hello, `map-window` and the draw/ack loop without an emulator in the way:
+the hello, `window-map` and the draw/ack loop without an emulator in the way:
 
 ```bash
 ./gradlew test --tests '*ServerSmokeTest*' -DxpraServer=192.168.0.10:10000

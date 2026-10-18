@@ -14,10 +14,18 @@ object Hello {
 
     /**
      * What we report as our version. The server runs `version_compat_check`
-     * (`xpra/util/version.py:108`) over this and rejects anything below 3.0 or unparseable.
-     * Claiming the version we were written against takes the "identical major.minor" fast path.
+     * (`xpra/util/version.py:145`) over this and rejects anything below its own
+     * `MIN_PROTOCOL_VERSION` (7.0) or unparseable. Claiming the version we were written against
+     * takes the "identical major.minor" fast path.
      */
-    const val CLIENT_VERSION = "6.6"
+    const val CLIENT_VERSION = "8.0"
+
+    /**
+     * The oldest peer we are willing to talk to, checked by the server's `protocol_compat_check`
+     * (`xpra/util/version.py:110`). Every server from 7.0 on registers the modern packet names
+     * (`xpra/net/packet_type.py`), which are the only ones this client sends.
+     */
+    val PROTOCOL_VERSION = listOf(7, 0)
 
     /**
      * The only challenge digest we implement. Advertising just this one in both digest lists
@@ -60,6 +68,7 @@ object Hello {
         val caps = LinkedHashMap<String, Any?>()
 
         caps["version"] = CLIENT_VERSION
+        caps["protocol-version"] = PROTOCOL_VERSION
         caps["client_type"] = "kotlin"
 
         // Packet encoder negotiation. Without a match the server disconnects with

@@ -68,21 +68,21 @@ class ServerSmokeTest {
                             println("   wheel.precise=${h["wheel.precise"]} clipboard=${h["clipboard"]}")
                             val types = (h["packet-types"] as? List<*>)?.map { it.toString() }.orEmpty()
                             println("   packet-types: ${types.size} entries, " +
-                                "configure-display=${"configure-display" in types}")
+                                "display-configure=${"display-configure" in types}")
                         }
                         "challenge" -> println("<< challenge: authentication required (not configured here)")
-                        "disconnect" -> println("<< DISCONNECT: ${packet.str(1)} ${packet.str(2)}")
+                        "connection-close" -> println("<< DISCONNECT: ${packet.str(1)} ${packet.str(2)}")
                         "window-create" -> {
                             println("<< $packet")
                             // The server sends no pixels until the window is mapped, so this
                             // is what turns the handshake into an actual session.
                             val wid = packet.int(1)
                             conn.send(
-                                "map-window", wid, packet.int(2), packet.int(3),
+                                "window-map", wid, packet.int(2), packet.int(3),
                                 packet.int(4), packet.int(5), emptyMap<String, Any>(),
                                 emptyMap<String, Any>(),
                             )
-                            conn.send("focus", wid, emptyList<String>())
+                            conn.send("window-focus", wid, emptyList<String>())
                         }
                         "window-draw" -> {
                             val coding = packet.str(6)
@@ -92,11 +92,11 @@ class ServerSmokeTest {
                             // Ack every draw, including ones we could not paint: the server's
                             // damage accounting stalls the window otherwise.
                             conn.send(
-                                "damage-sequence", packet.long(8), packet.int(1),
-                                packet.int(4), packet.int(5), 1, "",
+                                "window-ack", packet.int(1), packet.int(4), packet.int(5),
+                                packet.long(8), 1, "",
                             )
                         }
-                        "ping" -> conn.send("ping_echo", packet.long(1), 0, 0, 0, -1, "")
+                        "ping" -> conn.send("ping-echo", packet.long(1), 0, 0, 0, -1, "")
                         else -> if (seen[packet.type] == 1) println("<< $packet")
                     }
                 }
@@ -112,7 +112,7 @@ class ServerSmokeTest {
         println("  $drawBytes pixel bytes total")
 
         check(seen.containsKey("hello")) { "server never sent a hello; got: ${seen.keys}" }
-        check(!seen.containsKey("disconnect")) { "server disconnected us" }
+        check(!seen.containsKey("connection-close")) { "server disconnected us" }
         check(seen.containsKey("window-create")) { "no windows; start one with: xpra control :7 start xterm" }
         check(seen.containsKey("window-draw")) { "mapped a window but got no pixels" }
         // Every encoding the server picked has to be one we advertised, or we would be unable

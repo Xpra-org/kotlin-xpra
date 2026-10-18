@@ -28,7 +28,7 @@ import org.xpra.client.client.Keysyms
 import org.xpra.client.client.XpraClient
 
 /**
- * The bridge between Android's IME and `key-action` packets.
+ * The bridge between Android's IME and `keyboard-event` packets.
  *
  * We upload no keymap, so the server resolves keys by X11 keysym *name*. An IME gives us
  * committed text rather than key events, so this follows the same trick the html5 client uses
@@ -160,7 +160,7 @@ fun EditText.hideIme() {
 /**
  * The keys a phone keyboard has no room for, plus latching Ctrl/Alt/Super.
  *
- * A latched modifier is both included in the `modifiers` list of the next key-action *and*
+ * A latched modifier is both included in the `modifiers` list of the next keyboard-event *and*
  * bracketed with a press/release of its own keysym, which is what the server's keymap lookup
  * expects for a chord like Ctrl-C.
  */

@@ -182,6 +182,19 @@ object Hello {
         "monitors" to mapOf("0" to monitor(d)),
         "refresh-rate" to d.refreshRate,
         "dpi" to mapOf("x" to d.dpi, "y" to d.dpi),
+        // We attach a monitor descriptor ([monitorPosition]) to our window-map and pointer
+        // packets, so that with `sharing=combine` the server can map our positions onto an area
+        // of its display reserved for us (xpra/x11/subsystem/display.py:689).
+        "monitor-relative" to true,
+    )
+
+    /**
+     * Where a point of our desktop lies relative to the monitor it is on. We have exactly one
+     * monitor, at the origin, so this is the point itself.
+     */
+    fun monitorPosition(x: Int, y: Int): Map<String, Any?> = mapOf(
+        "index" to 0,
+        "position" to listOf(x, y),
     )
 
     /**

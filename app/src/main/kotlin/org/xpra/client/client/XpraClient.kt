@@ -235,6 +235,7 @@ class XpraClient(
             connection.send(
                 "window-map", wid, window.x, window.y, window.width, window.height,
                 emptyMap<String, Any>(), emptyMap<String, Any>(),
+                Hello.monitorPosition(window.x, window.y),
             )
             window.mapped = true
             // New top-level windows take over the screen.
@@ -366,14 +367,18 @@ class XpraClient(
      */
     fun sendPointer(x: Int, y: Int) {
         val wid = widAt(x, y) ?: return
-        connection.send("pointer-motion", -1, 0, wid, listOf(x, y), emptyMap<String, Any>())
+        connection.send("pointer-motion", -1, 0, wid, listOf(x, y), pointerProps(x, y))
     }
 
     fun sendButton(button: Int, pressed: Boolean, x: Int, y: Int, modifiers: List<String> = emptyList()) {
         val wid = widAt(x, y) ?: return
-        val props = if (modifiers.isEmpty()) emptyMap() else mapOf("modifiers" to modifiers)
+        val props = pointerProps(x, y)
+        if (modifiers.isNotEmpty()) props["modifiers"] = modifiers
         connection.send("pointer-button", -1, 0, wid, button, pressed, listOf(x, y), props)
     }
+
+    private fun pointerProps(x: Int, y: Int): MutableMap<String, Any?> =
+        mutableMapOf("monitor" to Hello.monitorPosition(x, y))
 
     /**
      * A scroll step. When the server handles wheel motion one packet carries a fractional
@@ -385,7 +390,7 @@ class XpraClient(
         if (wheelMotion) {
             connection.send(
                 "pointer-wheel", wid, button, -(clicks * 1000).toInt(), listOf(x, y),
-                emptyList<String>(), emptyList<Int>(), emptyMap<String, Any>(),
+                emptyList<String>(), emptyList<Int>(), pointerProps(x, y),
             )
         } else {
             repeat(clicks.toInt().coerceIn(0, 10)) {

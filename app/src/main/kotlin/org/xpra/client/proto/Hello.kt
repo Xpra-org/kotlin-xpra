@@ -86,6 +86,10 @@ object Hello {
         caps["compression_level"] = 1
 
         // Subsystem activation: each of these gates a server-side mixin's is_needed().
+        // Window forwarding is gated by a "window" dict (xpra/server/common.py:20), which must be
+        // non-empty to count: without it the server never loads WindowsConnection and sends no
+        // windows at all. "windows" is the boolean older servers look for instead.
+        caps["window"] = mapOf("enabled" to true)
         caps["windows"] = true
         caps["keyboard"] = true
         caps["ping"] = true

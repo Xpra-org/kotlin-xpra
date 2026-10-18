@@ -104,9 +104,10 @@ object Hello {
         )
         caps["mouse"] = true
 
-        // There is no cursor to draw on a touchscreen and no speaker worth ringing.
-        caps["cursor"] = false
-        caps["cursors"] = false
+        // There is no cursor to draw on a touchscreen and no speaker worth ringing. Cursors are
+        // turned off by leaving "cursor" out: when present it has to be a dict
+        // (xpra/server/subsystem/cursor.py:39), and its absence is enough to keep the cursor
+        // subsystem from loading (xpra/server/source/cursor.py:34).
         caps["bell"] = false
 
         caps["encodings"] = CORE_ENCODINGS

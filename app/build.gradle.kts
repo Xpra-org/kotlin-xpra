@@ -37,7 +37,11 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // No rules of our own: kotlinx.serialization ships the ones @Serializable needs, and
+            // nothing else here is reached by reflection.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
             signingConfig = signingConfigs.findByName("release")
         }
     }
